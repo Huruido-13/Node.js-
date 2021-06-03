@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const ejs = require('ejs');
 const qs = require('querystring');
+const { kMaxLength } = require('buffer');
 
 const index_page = fs.readFileSync('index.ejs','utf8');
 const other_page = fs.readFileSync('other.ejs','utf8');
@@ -27,6 +28,9 @@ let server = http.createServer(getFromClient);
 
 server.listen(3000);
 console.log("Server start!");
+
+
+
 
 
 function getFromClient(request,response){
@@ -57,36 +61,30 @@ function getFromClient(request,response){
     }
 
 function response_index(request,response){
-    const msg = "伝言メッセージ";
 
     if(request.method == "POST"){
         let body = "";
+        //伝言入力フォームから受け取ったクエリテキストをbodyに入れる
         request.on("data",(data) => {
             body += data;
         });
 
         request.on("end",() => {
+            /*クエリテキストをパースするとオブジェクトがリターンされ
+            {msg:""}の形でプロパティにパースされたクエリテキストが入っている
+            */
             leftedMassage = qs.parse(body);
+
+            setCookie('msg', leftedMassage.msg, response);
+            write_index(request, response);
         });
 
-        const data = ejs.render(index_page,{
-            title: "Index",
-            data: leftedMassage,
-            content: msg,
-    });
-    response.writeHead(200,{'Content-type': 'text/html'});
-    response.write(data);
-    response.end();
+
+
 }
 
 else{
-    const data = ejs.render(index_page,{
-        title: "Index",
-        data: leftedMassage,
-        content: msg,});
-        response.writeHead(200,{'Content-type': 'text/html'});
-        response.write(data);
-        response.end();
+    write_index(request, response);
 }
 
 
@@ -139,4 +137,43 @@ function response_other(request,response){
         response.write(dataOther);
         response.end();
     }
+}
+
+function write_index(request, response){
+    const msg = "伝言メッセージ";
+
+    let cookie_data = getCookie('msg', request);
+
+    const data = ejs.render(index_page,{
+        title: "Index",
+        data: leftedMassage,
+        content: msg,
+        cookie_data: cookie_data});
+
+    response.writeHead(200,{'Content-type': 'text/html'});
+    response.write(data);
+    response.end();
+}
+
+function setCookie(key, value, response){
+    //cookieがデータを保持できるようにvalueをescape()で16進数表現エスケープシーケンスで置き換える
+    let cookie = escape(value);
+    response.setHeader('Set-Cookie', [key + '=' + cookie]);
+}
+
+function getCookie(key, request){
+    //request.headerプロパティにヘッダー情報が、header.cookieプロパティにクッキーテキストが保管されている
+    let cookie_data = request.headers.cookie != undefined ? request.headers.cookie : "";
+    
+    //Cookieは実際にはkey=value;key=valueのような文字列で保存されるため";"でスプリットする
+    const data = cookie_data.split(';');
+    for(const i in data){
+        /*string.trim()前後の空白を削除後文字列を返す　
+        startsWith()引数で始まっているかどうかをチェックtrue/falseを返す*/
+        if(data[i].trim().startsWith(key + '=')){
+            let result = data[i].trim().replace(key + '=',"")
+            return unescape(result);
+        }
+    }
+    return '';
 }
